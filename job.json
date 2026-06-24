@@ -1,0 +1,7 @@
+{
+  "lottie": "Simple_Animation.ph.json",
+  "out": "frames-svg/job-json",
+  "replacements": {
+    "ph.text.name": { "type": "text", "value": "Nick Dimitrov" }
+  }
+}

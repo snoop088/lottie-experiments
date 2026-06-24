@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Transparent everywhere so omitBackground screenshots keep alpha */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
+      #lottie {
+        /* sized to the animation dimensions at init time */
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="lottie"></div>
+    <script>
+      // Host-shell API driven by Playwright. lottie-web is injected by the
+      // driver via addScriptTag; fonts are injected via addStyleTag first.
+
+      function _measurer() {
+        const ctx = document.createElement('canvas').getContext('2d');
+        return (str, size, family) => {
+          ctx.font = size + "px '" + family + "'";
+          return ctx.measureText(str).width;
+        };
+      }
+
+      // Greedy word-wrap to a target width, preserving existing explicit breaks.
+      function _wrap(text, size, family, target, measure) {
+        const lines = [];
+        String(text)
+          .split(/[\r\n]/)
+          .forEach((para) => {
+            let line = '';
+            para.split(' ').forEach((word) => {
+              const test = line ? line + ' ' + word : word;
+              if (line && measure(test, size, family) > target) {
+                lines.push(line);
+                line = word;
+              } else {
+                line = test;
+              }
+            });
+            lines.push(line);
+          });
+        return { text: lines.join('\r'), lines: lines.length };
+      }
+
+      // Fit text: shrink single-line `text` to width; wrap `text_area` to width
+      // (vertical overflow allowed, only warned). Mutates animationData, stores
+      // it for __init. tasks: [{ name, type, width, height }]
+      window.__fit = function (animationData, tasks) {
+        const warnings = [];
+        const measure = _measurer();
+        const famByName = {};
+        ((animationData.fonts && animationData.fonts.list) || []).forEach((f) => {
+          famByName[f.fName] = f.fFamily || f.fName;
+        });
+
+        const byId = {};
+        (animationData.assets || []).forEach((a) => (byId[a.id] = a));
+        function findText(name) {
+          let res = null;
+          (function visit(layers) {
+            for (const l of layers || []) {
+              if (res) return;
+              if (l.nm === name && l.t) {
+                res = l;
+                return;
+              }
+              if (l.ty === 0 && byId[l.refId] && byId[l.refId].layers) visit(byId[l.refId].layers);
+            }
+          })(animationData.layers);
+          return res;
+        }
+
+        (tasks || []).forEach((t) => {
+          const layer = findText(t.name);
+          if (!layer) {
+            warnings.push('fit: no text layer "' + t.name + '"');
+            return;
+          }
+          (layer.t.d.k || []).forEach((kf) => {
+            const s = kf.s;
+            const family = famByName[s.f] || s.f;
+            if (!(t.width > 0)) return;
+
+            if (t.type === 'text') {
+              let size = s.s;
+              let w = measure(s.t, size, family);
+              while (w > t.width && size > 4) {
+                size -= 1;
+                w = measure(s.t, size, family);
+              }
+              if (size !== s.s) {
+                warnings.push(
+                  'fit: "' + t.name + '" shrunk ' + s.s + '->' + size + 'px to fit ' + Math.round(t.width) + 'px'
+                );
+                s.s = size;
+              }
+            } else if (t.type === 'text_area') {
+              const res = _wrap(s.t, s.s, family, t.width, measure);
+              s.t = res.text;
+              const lh = s.lh || s.s * 1.2;
+              const totalH = res.lines * lh;
+              if (t.height > 0 && totalH > t.height) {
+                warnings.push(
+                  'fit: "' + t.name + '" wraps to ' + res.lines + ' lines (~' + Math.round(totalH) +
+                    'px) and overflows height ' + Math.round(t.height) + 'px — left as-is'
+                );
+              }
+            }
+          });
+        });
+
+        window.__data = animationData;
+        return { warnings };
+      };
+
+      // Create the animation with the SVG renderer (restores glow / effects).
+      window.__init = function (w, h) {
+        const c = document.getElementById('lottie');
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+        window.__anim = lottie.loadAnimation({
+          container: c,
+          renderer: 'svg',
+          loop: false,
+          autoplay: false,
+          animationData: window.__data,
+          rendererSettings: { preserveAspectRatio: 'xMidYMid meet' },
+        });
+        window.__anim.goToAndStop(0, true);
+        return { totalFrames: Math.floor(window.__anim.totalFrames) };
+      };
+
+      // Step to an exact frame (frame-accurate, synchronous SVG update).
+      window.__seek = function (frame) {
+        window.__anim.goToAndStop(frame, true);
+      };
+    </script>
+  </body>
+</html>

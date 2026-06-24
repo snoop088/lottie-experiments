@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Render job — Simple_Animation.ph.json</title>
+<style>
+  body { font: 15px/1.45 system-ui, sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.25rem; } .sub { color: #666; margin-top: -.5rem; }
+  .field { margin: 1.1rem 0; }
+  label { display: block; font-weight: 600; margin-bottom: .3rem; }
+  label .tag { font-weight: 400; color: #888; font-size: .8rem; }
+  input[type=text], textarea, input[type=url], input[type=number] {
+    width: 100%; box-sizing: border-box; padding: .5rem; border: 1px solid #ccc; border-radius: 6px; font: inherit;
+  }
+  textarea { min-height: 5rem; resize: vertical; }
+  .row { display: flex; gap: .5rem; align-items: center; }
+  .row .w { width: 130px; flex: none; }
+  .preview { max-height: 80px; margin-top: .4rem; display: none; border: 1px solid #eee; border-radius: 6px; }
+  .bar { position: sticky; bottom: 0; background: #fff; padding: 1rem 0; border-top: 1px solid #eee; display: flex; gap: .6rem; align-items: center; }
+  button { font: inherit; padding: .55rem 1rem; border: 0; border-radius: 6px; cursor: pointer; }
+  #post { background: #2563eb; color: #fff; } #show { background: #eee; }
+  #endpoint { flex: 1; }
+  pre { background: #0d1117; color: #d1d5db; padding: 1rem; border-radius: 8px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+  #status { font-size: .85rem; color: #666; }
+</style>
+</head>
+<body>
+<h1>Render job</h1>
+<p class="sub">Template: <strong>Simple_Animation.ph.json</strong> — 1 placeholder(s)</p>
+
+<form id="form"></form>
+
+<div class="bar">
+  <input type="url" id="endpoint" placeholder="Backend URL (e.g. https://api.example.com/render)" />
+  <button type="button" id="show">Show JSON</button>
+  <button type="button" id="post">POST</button>
+</div>
+<p id="status"></p>
+<pre id="json" hidden></pre>
+
+<script>
+const META = {"template":"Simple_Animation.ph.json","placeholders":[{"name":"ph.text.name","key":"name","type":"text","comp":"placeholder","current":"Martin\u0003DImov"}]};
+
+const form = document.getElementById('form');
+META.placeholders.forEach(p => {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+  const label = '<label>' + p.key + ' <span class="tag">' + p.type + ' · ' + p.name + '</span></label>';
+  if (p.type === 'text') {
+    wrap.innerHTML = label +
+      '<input type="text" data-name="' + p.name + '" data-type="text" value="' + escapeAttr(p.current || '') + '">';
+  } else if (p.type === 'text_area') {
+    wrap.innerHTML = label +
+      '<div class="row"><textarea data-name="' + p.name + '" data-type="text_area">' + escapeHtml(p.current || '') + '</textarea>' +
+      '<input class="w" type="number" min="1" placeholder="width px" data-width-for="' + p.name + '"></div>';
+  } else if (p.type === 'image') {
+    wrap.innerHTML = label +
+      '<input type="file" accept="image/*" data-name="' + p.name + '" data-type="image">' +
+      '<img class="preview" data-preview-for="' + p.name + '">';
+  }
+  form.appendChild(wrap);
+});
+
+// image file -> base64 data URI (frontend sends base64, per AGENTS.md §6.3)
+const imageData = {};
+form.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.type === 'image' && el.files[0]) {
+    const r = new FileReader();
+    r.onload = () => {
+      imageData[el.dataset.name] = r.result;
+      const img = form.querySelector('[data-preview-for="' + el.dataset.name + '"]');
+      img.src = r.result; img.style.display = 'block';
+    };
+    r.readAsDataURL(el.files[0]);
+  }
+});
+
+function buildPayload() {
+  const replacements = {};
+  form.querySelectorAll('[data-name]').forEach(el => {
+    const name = el.dataset.name, type = el.dataset.type;
+    if (type === 'image') {
+      if (imageData[name]) replacements[name] = { type, value: imageData[name] };
+    } else {
+      const rec = { type, value: el.value };
+      if (type === 'text_area') {
+        const w = form.querySelector('[data-width-for="' + name + '"]');
+        if (w && w.value) rec.width = Number(w.value);
+      }
+      replacements[name] = rec;
+    }
+  });
+  return { template: META.template, replacements };
+}
+
+document.getElementById('show').onclick = () => {
+  const pre = document.getElementById('json');
+  pre.hidden = false;
+  pre.textContent = JSON.stringify(buildPayload(), null, 2);
+};
+
+document.getElementById('post').onclick = async () => {
+  const url = document.getElementById('endpoint').value.trim();
+  const status = document.getElementById('status');
+  if (!url) { status.textContent = 'Enter a backend URL first.'; return; }
+  status.textContent = 'Posting…';
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildPayload()),
+    });
+    status.textContent = 'Response: ' + res.status + ' ' + res.statusText;
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+  }
+};
+
+function escapeAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+</script>
+</body>
+</html>
