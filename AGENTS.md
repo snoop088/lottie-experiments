@@ -663,5 +663,21 @@ user accounts.
   def + IAM roles (Amplify→`RunTask`; task→S3/DynamoDB); ECR push pipeline; S3
   lifecycle on `staging/` + DynamoDB TTL on drafts.
 
+### 14.10 Provisioned (us-east-1) & env
+Created by [scripts/aws-setup.sh](scripts/aws-setup.sh) (idempotent):
+- **DynamoDB** `lottie-jobs` — PK `id`, on-demand, **TTL on `ttl`** (draft cleanup).
+- **S3** `lottie-render-780954185713` — all public access blocked; **CORS** PUT/GET/
+  HEAD from the app origins (presigned uploads); **lifecycle** expires `staging/`
+  after 1 day.
+- **Amplify app** `d2i1tmezpcq4dj` (WEB_COMPUTE) → https://main.d2i1tmezpcq4dj.amplifyapp.com
+
+**Env vars** the app reads (server-side only): `DYNAMODB_TABLE`, `S3_BUCKET`,
+`AWS_REGION`, and (later) `APP_PASSWORD`, `RENDER_TASK_*` for `ecs:RunTask`.
+- **Local dev:** in `.env` (gitignored) alongside AWS creds — both loaded by Next.
+- **Prod:** set as Amplify env; **creds come from an IAM role on the Amplify SSR
+  compute** (DynamoDB + S3 + later `ecs:RunTask`), not long-lived keys — wired in A6.
+
 ---
-*Open the doc to §14 to adjust any **(default)** call before A1 starts.*
+*Backend engine (A1 + M6) done. App: A2 in progress — shell live on Amplify,
+DynamoDB + S3 provisioned; next is the data layer + `/api/validate` + presign + jobs
+routes + server actions.*
