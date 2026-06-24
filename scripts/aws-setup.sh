@@ -80,6 +80,20 @@ JSON
 aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" \
   --lifecycle-configuration "file://$tmp/lifecycle.json" >/dev/null
 
+# ---------- Amplify Basic Auth (shared-password gate, §14.8) ----------
+# Hosting-level HTTP Basic Auth on the branch: blocks pages + API before the app
+# runs. Driven from env so the password never lands in the repo or logs.
+APP_ID="${AMPLIFY_APP_ID:-d2i1tmezpcq4dj}"
+BRANCH="${AMPLIFY_BRANCH:-main}"
+if [ -n "${BASIC_AUTH_USER:-}" ] && [ -n "${BASIC_AUTH_PASSWORD:-}" ]; then
+  CREDS="$(printf '%s:%s' "$BASIC_AUTH_USER" "$BASIC_AUTH_PASSWORD" | base64 | tr -d '\n')"
+  aws amplify update-branch --app-id "$APP_ID" --branch-name "$BRANCH" --region "$REGION" \
+    --enable-basic-auth --basic-auth-credentials "$CREDS" >/dev/null
+  echo "Amplify: Basic Auth ENABLED on branch $BRANCH (credentials from env)"
+else
+  echo "Amplify: Basic Auth skipped — set BASIC_AUTH_USER and BASIC_AUTH_PASSWORD in .env, then re-run"
+fi
+
 echo ""
 echo "Done. Set these in the app env (.env locally, Amplify env in prod):"
 echo "  DYNAMODB_TABLE=$TABLE"

@@ -632,10 +632,20 @@ retries); a **concurrency cap / worker-pool** (§13 M9); **S3 lifecycle deletion
 ever leaves Amplify. **Lambda-container render** stays rejected for the 15-min cap
 (§Deployment).
 
-### 14.8 Auth (decided: single shared password)
-Login → password → bearer token held client-side (localStorage), sent on every
-request. The secret is `APP_PASSWORD`, in Amplify env / SSM (not the repo). No
-user accounts.
+### 14.8 Auth (decided: Amplify Basic Auth — shared password)
+**Hosting-level HTTP Basic Auth** on the Amplify branch (not an app-level login).
+It blocks **pages and `/api/*` alike at the CDN before the app runs**, so no login
+page, cookie, or middleware is needed. Single shared username + password; the
+browser prompts once and auto-sends the credential on later requests (so the app's
+own `fetch`/API calls keep working).
+- Configured via `aws amplify update-branch --enable-basic-auth`, driven from
+  `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` in [scripts/aws-setup.sh](scripts/aws-setup.sh)
+  (secret stays in `.env`, never the repo). Applies to the custom domain too.
+- **Caveat:** presigned S3 media is fetched directly from S3, *not* through Amplify,
+  so it's gated by URL secrecy + TTL (§14.4), not by Basic Auth.
+- *(Superseded the earlier localStorage-bearer idea — Basic Auth is simpler and
+  gates the API uniformly. App-level login + httpOnly cookie + middleware remains
+  the fallback if we ever need a custom login UI / logout / per-user.)*
 
 ### 14.9 App milestones (Phase 1, after backend M6)
 - **A1 — Engine as a library ✅** pure `renderJob(opts)` in
