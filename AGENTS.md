@@ -398,10 +398,11 @@ task). Amplify only builds the root app; it ignores `render/`.
     │   ├── composite.js   ← ffmpeg overlay onto footage (audio + fps via ffprobe)
     │   ├── input.js       ← CSV + JSON/JSONL ingestion → normalized job shape
     │   ├── placeholders.js · replace.js · fonts.js
-    │   ├── render.html    ← lottie-web SVG host shell (__fit / __init / __seek)
-    │   └── make-form.js
+    │   └── render.html    ← lottie-web SVG host shell (__fit / __init / __seek)
     ├── default-fonts/     ← Open Sans, baked into the image (default fallback)
-    ├── custom-fonts/ · anim-test-1.json · Simple_Animation*.json · spec.csv · job.json
+    ├── custom-fonts/      ← Paddy Mischief (sample font for Simple_Animation.ph.json)
+    ├── anim-test-1.json · Simple_Animation.ph.json   ← engine test fixtures
+    ├── spec.csv · job.json                           ← CSV / JSON ingestion test inputs
     └── (src/task.js — AWS task entrypoint — lands in A4)
 ```
 
