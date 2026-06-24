@@ -1,7 +1,9 @@
 # Lottie Templating & Render Pipeline — Spec / Plan
 
 > Living design doc. Edit freely; implementation follows what's written here.
-> Status: **DRAFT — pending your review.** Nothing in `src/` is built yet.
+> Status: **Backend engine built & verified** (render + composite, M1–M7);
+> **app A2 in progress** (Next.js shell live on Amplify, DynamoDB + S3 + Basic
+> Auth provisioned). See §13 / §14.9 for per-milestone status.
 
 ## 1. Goal
 
@@ -236,12 +238,12 @@ to CWD or `--assets-dir`).
 - The **full layer name** (`ph.text.headline`) is the key in the replacement
   map; `key` is just the human-facing/form field label.
 
-**Discovery & matching** (`src/placeholders.js`):
+**Discovery & matching** (`render/src/placeholders.js`):
 - Scan every layer name, **recursing into precomps** (`ty === 0` → asset
   `layers`), since templates nest content in precomps.
 - A `text` / `text_area` token must sit on a **text layer** (`ty === 5`); an
   `image` token on an **image layer** (`ty === 2`) → resolve `refId` → `assets[]`.
-- `node src/placeholders.js <json>` lists discovered placeholders (the
+- `node render/src/placeholders.js <json>` lists discovered placeholders (the
   `--list-placeholders` capability).
 
 **Validation** (fail loud, no silent skips):
@@ -284,7 +286,7 @@ to CWD or `--assets-dir`).
 ## 9. CLI (proposed)
 
 ```
-node src/render.js \
+node render/src/render.js \
   --lottie ./anim-test-1.json \
   ( --json ./job.json | --jsonl ./jobs.jsonl | --csv ./spec.csv ) \
   --out ./frames \
@@ -310,7 +312,7 @@ node src/render.js \
 - **Install ffmpeg in the same image** (`apt-get install ffmpeg`) so one
   container runs both render and composite — the complete flow, no handoff.
 - `npm install` the app; bundle `lottie-web` + `render.html` + Open Sans default.
-- Build + run (entry is `src/render.js`; mount data for local CLI use):
+- Build + run (entry is `render/src/render.js`; mount data for local CLI use):
   ```
   docker build -t lottie-render render/
   docker run --rm -v "$PWD/render":/work -w /work --entrypoint node \
@@ -341,7 +343,7 @@ node src/render.js \
 ## 11a. Composite onto footage — **(Phase 1, M6 ✅)**
 
 Overlay the PNG sequence onto a footage MP4, preserving audio
-([src/composite.js](src/composite.js): `composite()` + `probeFootage()` + CLI).
+([src/composite.js](render/src/composite.js): `composite()` + `probeFootage()` + CLI).
 
 - **Inputs:** footage `.mp4` (video, audio optional), the PNG sequence, and a
   `start` frame — the footage frame at which animation frame `0000.png` appears.
@@ -416,9 +418,9 @@ task). Amplify only builds the root app; it ignores `render/`.
 4. **M4 — text fitting ✅** in-browser `measureText`: `text` auto-shrinks to one
    line; `text_area` wraps to width with vertical-overflow warning.
 5. **M5 — Fonts ✅ / Inputs ✅** `custom-fonts/` → base64 `@font-face` injection
-   done. CSV **and JSON / JSONL** ingestion done (`src/input.js`
+   done. CSV **and JSON / JSONL** ingestion done (`render/src/input.js`
    `loadJson`/`loadJsonl`, normalized to one job shape — §5.2).
-6. **M6 — ffmpeg composite ✅** [src/composite.js](src/composite.js): overlay PNG
+6. **M6 — ffmpeg composite ✅** [src/composite.js](render/src/composite.js): overlay PNG
    sequence on footage at `start` frame, **audio preserved**, **resolution + fps
    deduced from footage** (not assumed 30), footage passthrough where the overlay
    is absent, alpha/glow blended. Verified in-container.
@@ -433,7 +435,7 @@ task). Amplify only builds the root app; it ignores `render/`.
     out** (§Deployment).
 
 ---
-*Edit anything above; the first real coding step (M1) waits on your sign-off.*
+*Phase 1 backend complete (M1–M7). Remaining: M8 polish; app A2→A6 (§14.9).*
 
 ## 14. Frontend + API — the app (decided)
 
@@ -621,7 +623,7 @@ submitFields (Amplify)  → ecs:RunTask(overrides.env JOB_ID=<id>)
   default (the Playwright base ships only Liberation/DejaVu/Noto — no Open Sans — so
   it's bundled via the Dockerfile). No coin-flip fallback, so **no warning needed**.
 - The task assembles a local `fontsDir` (downloaded job fonts, or the baked default)
-  before `renderJob()`; [src/fonts.js](src/fonts.js) matches files → `@font-face`.
+  before `renderJob()`; [src/fonts.js](render/src/fonts.js) matches files → `@font-face`.
 
 ### 14.7 What's deferred to Phase 2
 The cost-first v1 already uses DynamoDB + on-demand Fargate, so most of the
@@ -649,12 +651,12 @@ own `fetch`/API calls keep working).
 
 ### 14.9 App milestones (Phase 1, after backend M6)
 - **A1 — Engine as a library ✅** pure `renderJob(opts)` in
-  [src/renderJob.js](src/renderJob.js); [src/render.js](src/render.js) is now a thin
-  CLI over it; **JSON/JSONL ingestion** done ([src/input.js](src/input.js));
+  [src/renderJob.js](render/src/renderJob.js); [src/render.js](render/src/render.js) is now a thin
+  CLI over it; **JSON/JSONL ingestion** done ([src/input.js](render/src/input.js));
   **Open Sans** baked into the image ([Dockerfile](Dockerfile) +
   [default-fonts/](default-fonts/)) as the deterministic fallback in
-  [src/fonts.js](src/fonts.js). Verified in-container (real font + fallback).
-  *(The AWS-aware `src/task.js` wrapper — JOB_ID → S3 → DynamoDB → composite —
+  [src/fonts.js](render/src/fonts.js). Verified in-container (real font + fallback).
+  *(The AWS-aware `render/src/task.js` wrapper — JOB_ID → S3 → DynamoDB → composite —
   lands with A3/A4, once S3/DynamoDB and the M6 composite exist; it would be a
   no-op stub before then.)*
 - **A2 — Next.js app + API ◐** monorepo done (Next at root, engine in `render/`);
@@ -676,10 +678,11 @@ own `fetch`/API calls keep working).
 ### 14.10 Provisioned (us-east-1) & env
 Created by [scripts/aws-setup.sh](scripts/aws-setup.sh) (idempotent):
 - **DynamoDB** `lottie-jobs` — PK `id`, on-demand, **TTL on `ttl`** (draft cleanup).
-- **S3** `lottie-render-780954185713` — all public access blocked; **CORS** PUT/GET/
+- **S3** `lottie-render-<ACCOUNT_ID>` — all public access blocked; **CORS** PUT/GET/
   HEAD from the app origins (presigned uploads); **lifecycle** expires `staging/`
-  after 1 day.
-- **Amplify app** `d2i1tmezpcq4dj` (WEB_COMPUTE) → https://main.d2i1tmezpcq4dj.amplifyapp.com
+  after 1 day. (Real name in `.env` `S3_BUCKET`; the script derives it from the
+  account via STS — kept out of this public doc.)
+- **Amplify app** `d2i1tmezpcq4dj` (WEB_COMPUTE) — the public `*.amplifyapp.com` URL.
 
 **Env vars** the app reads (server-side only): `DYNAMODB_TABLE`, `S3_BUCKET`,
 `AWS_REGION`, and (later) `APP_PASSWORD`, `RENDER_TASK_*` for `ecs:RunTask`.
