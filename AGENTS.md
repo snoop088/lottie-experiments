@@ -318,6 +318,13 @@ node render/src/render.js \
   docker run --rm -v "$PWD/render":/work -w /work --entrypoint node \
     lottie-render /app/src/render.js anim-test-1.json frames --csv spec.csv
   ```
+- **Local CLI wrapper** [render/cli.sh](render/cli.sh) wraps the above (auto-builds
+  if missing; paths are relative to `render/`):
+  ```
+  render/cli.sh render Simple_Animation.ph.json out --csv spec.csv
+  render/cli.sh composite footage.mp4 out result.mp4 --start 0
+  render/cli.sh placeholders Simple_Animation.ph.json
+  ```
 - `fonts/` is bundled into the image so `@font-face` can reference it (no
   `fc-cache` / OS font install needed — §8).
 
@@ -392,6 +399,7 @@ task). Amplify only builds the root app; it ignores `render/`.
 │
 └── render/               ← the engine (its own package.json: playwright + lottie-web)
     ├── Dockerfile · .dockerignore                 (combined Playwright + ffmpeg)
+    ├── cli.sh             ← local CLI wrapper (runs the engine in Docker)
     ├── src/
     │   ├── render.js      ← thin CLI over renderJob()
     │   ├── renderJob.js   ← pure render engine: replace→fit→SVG→PNG (AWS-unaware)
