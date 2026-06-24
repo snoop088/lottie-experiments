@@ -1,0 +1,16 @@
+{
+  "name": "lottie-experiments",
+  "version": "1.0.0",
+  "description": "Lottie templating + render pipeline (Playwright SVG renderer -> transparent PNG sequence -> ffmpeg composite)",
+  "main": "src/render.js",
+  "scripts": {
+    "render": "node src/render.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "lottie-web": "5.13.0",
+    "playwright": "1.61.0"
+  }
+}

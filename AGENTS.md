@@ -302,15 +302,19 @@ node src/render.js \
 
 ## 10. Docker (one combined image)
 
+> Lives in **`render/`** (the engine subdir of the monorepo, §12). Build context
+> is `render/`; the image is pushed to ECR and run as the Fargate task (§14).
+
 - Base: `mcr.microsoft.com/playwright:vX.Y-jammy` (Chromium + system libs +
   fonts preinstalled).
 - **Install ffmpeg in the same image** (`apt-get install ffmpeg`) so one
   container runs both render and composite — the complete flow, no handoff.
-- `npm ci` the app; bundle `lottie-web` + `render.html` into the image.
-- Entry runs `src/render.js`; project dirs mounted as volumes:
+- `npm install` the app; bundle `lottie-web` + `render.html` + Open Sans default.
+- Build + run (entry is `src/render.js`; mount data for local CLI use):
   ```
-  docker run --rm -v "$PWD":/work -w /work lottie-render \
-    --lottie anim-test-1.json --csv spec.csv --out frames
+  docker build -t lottie-render render/
+  docker run --rm -v "$PWD/render":/work -w /work --entrypoint node \
+    lottie-render /app/src/render.js anim-test-1.json frames --csv spec.csv
   ```
 - `fonts/` is bundled into the image so `@font-face` can reference it (no
   `fc-cache` / OS font install needed — §8).
@@ -367,32 +371,36 @@ Overlay the PNG sequence onto a footage MP4, preserving audio
   alignment is the frontend's job when it deduces footage params). Output is H.264
   + `yuv420p`; color-range/space matching with the footage is a polish item.
 
-## 12. Proposed project structure
+## 12. Project structure — **monorepo**
 
-Actual layout as built:
+Two deployables in one repo: the **Next.js app at root** (Amplify autodetects it)
+and the **render engine in `render/`** (built to an ECR image, run as the Fargate
+task). Amplify only builds the root app; it ignores `render/`.
 ```
 .
-├── AGENTS.md            ← this file
-├── package.json         ← playwright + lottie-web
-├── Dockerfile           ← combined image (Playwright + ffmpeg)
-├── .dockerignore
-├── src/
-│   ├── render.js        ← thin CLI over renderJob() (args, source selection, paths)
-│   ├── renderJob.js     ← pure render engine: replace→fit→SVG→PNG sequence (AWS-unaware)
-│   ├── input.js         ← CSV + JSON/JSONL ingestion → normalized job shape
-│   ├── placeholders.js  ← ph.<type>.<key> discovery + validation
-│   ├── replace.js       ← layer lookup + text/text_area/image mutation; fit tasks
-│   ├── fonts.js         ← match fonts dir → base64 @font-face CSS (+ Open Sans fallback)
-│   ├── composite.js     ← ffmpeg overlay onto footage (audio + fps from ffprobe)
-│   ├── render.html      ← lottie-web SVG host shell (__fit / __init / __seek)
-│   └── make-form.js     ← generate a submit form from a Lottie's placeholders
-├── custom-fonts/        ← per-template fonts (.otf/.ttf) injected as @font-face
-├── default-fonts/       ← Open Sans, baked into the image as the default fallback
-├── anim-test-1.json     ← M1 glow demo (no placeholders)
-├── Simple_Animation.json / Simple_Animation.ph.json  ← text-placeholder sample
-├── spec.csv             ← test replacement input
-├── job.json             ← sample JSON job (the §5.2 transport)
-└── form.html            ← generated submit form (sample)
+├── AGENTS.md             ← this file
+├── package.json          ← Next.js app (next/react) — Amplify autodetect target
+├── next.config.mjs · tsconfig.json
+├── app/                  ← Next App Router (UI + API + server actions)
+│   ├── layout.tsx · globals.css · page.tsx        (/ jobs list)
+│   ├── new/page.tsx                               (/new two-step gather)
+│   ├── [id]/page.tsx                              (/<id> job detail + poll)
+│   ├── [id]/fields/page.tsx                       (/<id>/fields dynamic form)
+│   └── api/health/route.ts                        (liveness; more routes A2)
+│
+└── render/               ← the engine (its own package.json: playwright + lottie-web)
+    ├── Dockerfile · .dockerignore                 (combined Playwright + ffmpeg)
+    ├── src/
+    │   ├── render.js      ← thin CLI over renderJob()
+    │   ├── renderJob.js   ← pure render engine: replace→fit→SVG→PNG (AWS-unaware)
+    │   ├── composite.js   ← ffmpeg overlay onto footage (audio + fps via ffprobe)
+    │   ├── input.js       ← CSV + JSON/JSONL ingestion → normalized job shape
+    │   ├── placeholders.js · replace.js · fonts.js
+    │   ├── render.html    ← lottie-web SVG host shell (__fit / __init / __seek)
+    │   └── make-form.js
+    ├── default-fonts/     ← Open Sans, baked into the image (default fallback)
+    ├── custom-fonts/ · anim-test-1.json · Simple_Animation*.json · spec.csv · job.json
+    └── (src/task.js — AWS task entrypoint — lands in A4)
 ```
 
 ## 13. Implementation milestones
@@ -639,10 +647,11 @@ user accounts.
   *(The AWS-aware `src/task.js` wrapper — JOB_ID → S3 → DynamoDB → composite —
   lands with A3/A4, once S3/DynamoDB and the M6 composite exist; it would be a
   no-op stub before then.)*
-- **A2 — Next.js app + API:** scaffold the app; pages (`/`, `/new`, `/<id>/fields`,
-  `/<id>`); Route Handlers (`/api/login`, `/api/validate` incl. size guard + font
-  detection, `/api/uploads/presign`, `/api/jobs` list/get/resign) + bearer auth;
-  Server Actions (`commitJob`, `submitFields`, `cloneJob`); **DynamoDB** store.
+- **A2 — Next.js app + API ◐** monorepo done (Next at root, engine in `render/`);
+  shell pages (`/`, `/new`, `/<id>`, `/<id>/fields`) + `/api/health` build & Amplify-
+  autodetect ✅. **TODO:** Route Handlers (`/api/login`, `/api/validate` incl. size
+  guard + font detection, `/api/uploads/presign`, `/api/jobs` list/get/resign) +
+  bearer auth; Server Actions (`commitJob`, `submitFields`, `cloneJob`); **DynamoDB**.
 - **A3 — S3 + ECR image:** presign/upload/download incl. **fonts**; staging→commit
   copy; the task assembles `fontsDir`; push the §10 Playwright+ffmpeg image to
   **ECR**; `ffprobe` resolution.

@@ -9,6 +9,8 @@ dist/
 .amplify/
 .turbo/
 .vercel/
+next-env.d.ts
+*.tsbuildinfo
 
 # Rendered output + large media (regenerated, never source)
 frames/
